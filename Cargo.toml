@@ -1,0 +1,19 @@
+[package]
+name = "fuzzy-filter"
+version = "0.0.0"
+authors = ["Shota Nozaki <emonkak@gmail.com>"]
+license = "MIT"
+description = ""
+readme = "README.md"
+homepage = "https://github.com/emonkak/fuzzy-filter"
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+anyhow = "1"
+fuzzy-matcher = "*"
+pico-args = "0.5"
+
+[[bin]]
+name = "fuzzy-filter"
+path = "src/main.rs"
