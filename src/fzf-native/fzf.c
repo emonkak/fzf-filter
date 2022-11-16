@@ -84,7 +84,7 @@ static size_t leading_whitespaces(fzf_string_t *str) {
 
 static size_t trailing_whitespaces(fzf_string_t *str) {
   size_t whitespaces = 0;
-  for (size_t i = str->size - 1; i >= 0; i--) {
+  for (int32_t i = (int32_t)str->size - 1; i >= 0; i--) {
     if (!isspace((uint8_t)str->data[i])) {
       break;
     }
@@ -138,7 +138,9 @@ static char *str_replace_char(char *str, char find, char replace) {
   return str;
 }
 
-static char *str_replace(char *orig, char *rep, char *with) {
+static char *str_replace(char *orig, size_t len_orig,
+                         char *rep, size_t len_rep,
+                         char *with, size_t len_with) {
   if (!orig || !rep || !with) {
     return NULL;
   }
@@ -147,10 +149,7 @@ static char *str_replace(char *orig, char *rep, char *with) {
   char *ins;
   char *tmp;
 
-  size_t len_rep = strlen(rep);
   size_t len_front = 0;
-  size_t len_orig = strlen(orig);
-  size_t len_with = strlen(with);
   size_t count = 0;
 
   if (len_rep == 0) {
@@ -489,7 +488,7 @@ fzf_result_t fzf_fuzzy_match_v1(bool case_sensitive, bool normalize,
         sidx = (int32_t)idx;
       }
       pidx++;
-      if (pidx == M) {
+      if (pidx == (int32_t)M) {
         eidx = (int32_t)idx + 1;
         break;
       }
@@ -734,10 +733,10 @@ fzf_result_t fzf_fuzzy_match_v2(bool case_sensitive, bool normalize,
 
       int16_t s1 = 0;
       int16_t s2 = 0;
-      if (i > 0 && j >= f.data[i]) {
+      if (i > 0 && (int32_t)j >= f.data[i]) {
         s1 = h.data[ii - width + j0 - 1];
       }
-      if (j > f.data[i]) {
+      if ((int32_t)j > f.data[i]) {
         s2 = h.data[ii + j0 - 1];
       }
 
@@ -876,7 +875,7 @@ fzf_result_t fzf_suffix_match(bool case_sensitive, bool normalize,
   if (M == 0) {
     return (fzf_result_t){(int32_t)trimmed_len, (int32_t)trimmed_len, 0};
   }
-  size_t diff = trimmed_len - M;
+  int32_t diff = trimmed_len - M;
   if (diff < 0) {
     return (fzf_result_t){-1, -1, 0};
   }
@@ -989,22 +988,20 @@ static void append_pattern(fzf_pattern_t *pattern, fzf_term_set_t *value) {
  * - bool extended always true (thats the whole point of this isn't it)
  */
 fzf_pattern_t *fzf_parse_pattern(fzf_case_types case_mode, bool normalize,
-                                 char *pattern, bool fuzzy) {
+                                 char *pattern, size_t pat_len, bool fuzzy) {
   fzf_pattern_t *pat_obj = (fzf_pattern_t *)malloc(sizeof(fzf_pattern_t));
   memset(pat_obj, 0, sizeof(*pat_obj));
 
-  size_t pat_len = strlen(pattern);
   if (pat_len == 0) {
     return pat_obj;
   }
   pattern = trim_whitespace_left(pattern, &pat_len);
   while (has_suffix(pattern, pat_len, " ", 1) &&
          !has_suffix(pattern, pat_len, "\\ ", 2)) {
-    pattern[pat_len - 1] = 0;
     pat_len--;
   }
 
-  char *pattern_copy = str_replace(pattern, "\\ ", "\t");
+  char *pattern_copy = str_replace(pattern, pat_len, "\\ ", 2, "\t", 1);
   const char *delim = " ";
   char *ptr = strtok(pattern_copy, delim);
 
@@ -1139,15 +1136,15 @@ void fzf_free_pattern(fzf_pattern_t *pattern) {
   SFREE(pattern);
 }
 
-int32_t fzf_get_score(const char *text, fzf_pattern_t *pattern,
-                      fzf_slab_t *slab) {
+int32_t fzf_get_score(const char *text, size_t text_len,
+                      fzf_pattern_t *pattern, fzf_slab_t *slab) {
   // If the pattern is an empty string then pattern->ptr will be NULL and we
   // basically don't want to filter. Return 1 for telescope
   if (pattern->ptr == NULL) {
     return 1;
   }
 
-  fzf_string_t input = {.data = text, .size = strlen(text)};
+  fzf_string_t input = {.data = text, .size = text_len};
   if (pattern->only_inv) {
     int final = 0;
     for (size_t i = 0; i < pattern->size; i++) {
@@ -1192,15 +1189,15 @@ int32_t fzf_get_score(const char *text, fzf_pattern_t *pattern,
   return total_score;
 }
 
-fzf_position_t *fzf_get_positions(const char *text, fzf_pattern_t *pattern,
-                                  fzf_slab_t *slab) {
+fzf_position_t *fzf_get_positions(const char *text, size_t text_len,
+                                  fzf_pattern_t *pattern, fzf_slab_t *slab) {
   // If the pattern is an empty string then pattern->ptr will be NULL and we
   // basically don't want to filter. Return 1 for telescope
   if (pattern->ptr == NULL) {
     return NULL;
   }
 
-  fzf_string_t input = {.data = text, .size = strlen(text)};
+  fzf_string_t input = {.data = text, .size = text_len};
   fzf_position_t *all_pos = fzf_pos_array(0);
   for (size_t i = 0; i < pattern->size; i++) {
     fzf_term_set_t *term_set = pattern->ptr[i];

@@ -1,19 +1,25 @@
 [package]
-name = "fuzzy-filter"
+name = "fzf-filter"
 version = "0.0.0"
 authors = ["Shota Nozaki <emonkak@gmail.com>"]
 license = "MIT"
 description = ""
 readme = "README.md"
-homepage = "https://github.com/emonkak/fuzzy-filter"
+homepage = "https://github.com/emonkak/fzf-filter"
 edition = "2021"
 resolver = "2"
 
 [dependencies]
 anyhow = "1"
-fuzzy-matcher = "*"
 pico-args = "0.5"
 
+[build-dependencies]
+bindgen = "0.61"
+cc = "1"
+
+[profile.release]
+strip = true
+
 [[bin]]
-name = "fuzzy-filter"
+name = "fzf-filter"
 path = "src/main.rs"

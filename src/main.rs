@@ -1,22 +1,22 @@
 use anyhow::{anyhow, Context as _};
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
 use std::cmp::Reverse;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
 use std::io::{self, Write as _};
 use std::process::{Command, ExitCode};
 
+use fzf_filter::fzf;
+
 const HELP: &'static str = "\
 USAGE:
-  fuzzy-filter [OPTIONS] -- <COMMAND> [COMMAND_ARGUMENTS]
+  fzf-filter [OPTIONS] -- <COMMAND> [COMMAND_ARGUMENTS]
 
 OPTIONS:
   -l, --limit-items <N>  a maximum number of items to print
   -h, --help             Print help information";
 
 fn main() -> anyhow::Result<ExitCode> {
-    let args = parse_args(env::args_os());
+    let args = Args::parse(env::args_os());
     match args {
         Ok(args) => {
             if args.help {
@@ -43,8 +43,8 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::FAILURE);
     }
 
-    let matcher = SkimMatcherV2::default();
     let stdin = io::stdin();
+    let slab = fzf::Slab::default();
 
     let output_content = String::from_utf8(output.stdout)
         .context("failed to parse the command output as a UTF8 string")?;
@@ -67,17 +67,21 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
                 }
             }
         } else {
+            let pattern = fzf::Pattern::new(pattern, fzf::CaseMode::Smart, true);
+
             let mut matched_lines = vec![];
             for line in output_content.lines() {
-                if let Some(score) = matcher.fuzzy_match(&line, pattern) {
+                let score = fzf::get_score(line, &pattern, &slab);
+                if score > 0 {
                     matched_lines.push(Reverse((score, line)));
                 }
             }
+
             match args.limit_items {
                 Some(limit_items) if matched_lines.len() > limit_items => {
-                    let (top_items, _, _) = matched_lines.select_nth_unstable(limit_items);
-                    top_items.sort_unstable();
-                    for Reverse((_, line)) in top_items {
+                    let (partial_items, _, _) = matched_lines.select_nth_unstable(limit_items);
+                    partial_items.sort_unstable();
+                    for Reverse((_, line)) in partial_items {
                         println!("{} {}", sequence, line);
                     }
                 }
@@ -105,22 +109,24 @@ struct Args {
     help: bool,
 }
 
-fn parse_args(args: ArgsOs) -> anyhow::Result<Args> {
-    let mut head_parts = vec![];
-    let mut iter = args.into_iter();
-    while let Some(arg) = iter.next() {
-        if arg.to_str().map_or(false, |s| s == "--") {
-            break;
+impl Args {
+    fn parse(args: ArgsOs) -> anyhow::Result<Self> {
+        let mut head_parts = vec![];
+        let mut iter = args.into_iter();
+        while let Some(arg) = iter.next() {
+            if arg.eq_ignore_ascii_case("--") {
+                break;
+            }
+            head_parts.push(arg)
         }
-        head_parts.push(arg)
+        let command = iter.next().ok_or(anyhow!("command is not specified"))?;
+        let command_args = iter.collect();
+        let mut pico_args = pico_args::Arguments::from_vec(head_parts);
+        Ok(Self {
+            command,
+            command_args,
+            limit_items: pico_args.opt_value_from_str(["-l", "--limit-items"])?,
+            help: pico_args.contains(["-h", "--help"]),
+        })
     }
-    let command = iter.next().ok_or(anyhow!("command not specified"))?;
-    let command_args = iter.collect();
-    let mut pico_args = pico_args::Arguments::from_vec(head_parts);
-    Ok(Args {
-        command,
-        command_args,
-        limit_items: pico_args.opt_value_from_str(["-l", "--limit-items"])?,
-        help: pico_args.contains(["-h", "--help"]),
-    })
 }
