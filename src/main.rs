@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context as _};
-use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use std::cmp::Reverse;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -46,27 +46,30 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
     let matcher = SkimMatcherV2::default();
     let stdin = io::stdin();
 
-    let haystack = String::from_utf8(output.stdout)
+    let output_content = String::from_utf8(output.stdout)
         .context("failed to parse the command output as a UTF8 string")?;
-    let mut needle_buffer = String::new();
+    let mut pattern_buffer = String::new();
     let mut sequence = 1;
 
-    while let Ok(_) = stdin.read_line(&mut needle_buffer) {
-        let needle = needle_buffer.trim();
-        if needle.is_empty() {
+    while let Ok(num_bytes) = stdin.read_line(&mut pattern_buffer) {
+        if num_bytes == 0 {
+            break;
+        }
+        let pattern = pattern_buffer.trim();
+        if pattern.is_empty() {
             if let Some(limit_items) = args.limit_items {
-                for line in haystack.lines().take(limit_items) {
+                for line in output_content.lines().take(limit_items) {
                     println!("{} {}", sequence, line)
                 }
             } else {
-                for line in haystack.lines() {
+                for line in output_content.lines() {
                     println!("{} {}", sequence, line)
                 }
             }
         } else {
             let mut matched_lines = vec![];
-            for line in haystack.lines() {
-                if let Some(score) = matcher.fuzzy_match(&line, needle) {
+            for line in output_content.lines() {
+                if let Some(score) = matcher.fuzzy_match(&line, pattern) {
                     matched_lines.push(Reverse((score, line)));
                 }
             }
@@ -86,8 +89,8 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
                 }
             }
         }
-        println!("{}", sequence);  // EOF
-        needle_buffer.clear();
+        println!("{}", sequence); // EOF
+        pattern_buffer.clear();
         sequence += 1;
     }
 
