@@ -70,27 +70,38 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
             let pattern = fzf::Pattern::new(pattern, fzf::CaseMode::Smart, true);
 
             let mut matched_lines = vec![];
-            for line in output_content.lines() {
-                let score = fzf::get_score(line, &pattern, &slab);
-                if score > 0 {
-                    matched_lines.push(Reverse((score, line)));
+
+            match args.field {
+                Some(field) => {
+                    for line in output_content.lines() {
+                        if let Some(content) = line.split('\t').nth(field) {
+                            let score = fzf::get_score(content, &pattern, &slab);
+                            if score > 0 {
+                                matched_lines.push(Reverse((score, line)));
+                            }
+                        }
+                    }
+                }
+                None => {
+                    for line in output_content.lines() {
+                        let score = fzf::get_score(line, &pattern, &slab);
+                        if score > 0 {
+                            matched_lines.push(Reverse((score, line)));
+                        }
+                    }
                 }
             }
 
-            match args.limit_items {
+            let matched_lines = match args.limit_items {
                 Some(limit_items) if matched_lines.len() > limit_items => {
-                    let (partial_items, _, _) = matched_lines.select_nth_unstable(limit_items);
-                    partial_items.sort_unstable();
-                    for Reverse((_, line)) in partial_items {
-                        println!("{} {}", sequence, line);
-                    }
+                    let (partial_lines, _, _) = matched_lines.select_nth_unstable(limit_items);
+                    partial_lines
                 }
-                _ => {
-                    matched_lines.sort_unstable();
-                    for Reverse((_, line)) in matched_lines {
-                        println!("{} {}", sequence, line);
-                    }
-                }
+                _ => matched_lines.as_mut_slice(),
+            };
+            matched_lines.sort_unstable();
+            for Reverse((_, line)) in matched_lines {
+                println!("{} {}", sequence, line);
             }
         }
         println!("{}", sequence); // EOF
@@ -103,10 +114,11 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
 
 #[derive(Debug)]
 struct Args {
-    limit_items: Option<usize>,
     command: OsString,
     command_args: Vec<OsString>,
+    field: Option<usize>,
     help: bool,
+    limit_items: Option<usize>,
 }
 
 impl Args {
@@ -125,8 +137,9 @@ impl Args {
         Ok(Self {
             command,
             command_args,
-            limit_items: pico_args.opt_value_from_str(["-l", "--limit-items"])?,
+            field: pico_args.opt_value_from_str(["-f", "--field"])?,
             help: pico_args.contains(["-h", "--help"]),
+            limit_items: pico_args.opt_value_from_str(["-l", "--limit-items"])?,
         })
     }
 }
