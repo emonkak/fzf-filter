@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context as _};
+use anyhow::anyhow;
 use std::cmp::Reverse;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -46,8 +46,7 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
     let stdin = io::stdin();
     let slab = fzf::Slab::default();
 
-    let output_content = String::from_utf8(output.stdout)
-        .context("failed to parse the command output as a UTF8 string")?;
+    let output_content = String::from_utf8_lossy(&output.stdout);
     let mut pattern_buffer = String::new();
     let mut sequence = 1;
 
