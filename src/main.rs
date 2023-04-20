@@ -49,14 +49,16 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
     let slab = fzf::Slab::default();
 
     let output_content = String::from_utf8_lossy(&output.stdout);
-    let mut pattern_buffer = String::new();
-    let mut sequence = 1;
+    let mut buffer = String::new();
 
-    while let Ok(num_bytes) = stdin.read_line(&mut pattern_buffer) {
+    while let Ok(num_bytes) = stdin.read_line(&mut buffer) {
         if num_bytes == 0 {
             break;
         }
-        let pattern = pattern_buffer.trim();
+        let Some((sequence, pattern)) = buffer.trim_end_matches('\n').split_once(' ') else {
+            buffer.clear();
+            continue;
+        };
         if pattern.is_empty() {
             if let Some(limit_items) = args.limit_items {
                 for line in output_content.lines().take(limit_items) {
@@ -69,7 +71,6 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
             }
         } else {
             let pattern = fzf::Pattern::new(pattern, fzf::CaseMode::Smart, true);
-
             let mut matched_lines = vec![];
 
             match args.field_index {
@@ -102,14 +103,15 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
                 }
                 _ => matched_lines.as_mut_slice(),
             };
+
             matched_lines.sort_unstable();
+
             for Reverse((_, line)) in matched_lines {
                 println!("{} {}", sequence, line);
             }
         }
         println!("{}", sequence); // EOF
-        pattern_buffer.clear();
-        sequence += 1;
+        buffer.clear();
     }
 
     return Ok(ExitCode::SUCCESS);
