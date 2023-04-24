@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use std::cmp::Reverse;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -17,14 +16,13 @@ OPTIONS:
                               (default: whole line)
   -p, --field-partitions NUM  a maximum number of partitions of the field
   -d, --field-delimiter CHAR  a field delimiter character
-                              (default: \\t)
-  -h, --help                  print help information";
+                              (default: \\t)";
 
 fn main() -> anyhow::Result<ExitCode> {
-    let mode = Mode::parse(env::args_os());
+    let mode = Args::parse(env::args_os());
     match mode {
-        Ok(Mode::Run(args)) => run(args),
-        Ok(Mode::Help) => {
+        Ok(Some(args)) => run(args),
+        Ok(None) => {
             println!("{}", HELP);
             Ok(ExitCode::SUCCESS)
         }
@@ -118,13 +116,17 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
 }
 
 #[derive(Debug)]
-enum Mode {
-    Run(Args),
-    Help,
+struct Args {
+    command: OsString,
+    command_args: Vec<OsString>,
+    field_delimiter: char,
+    field_index: Option<usize>,
+    field_partitions: Option<usize>,
+    limit_items: Option<usize>,
 }
 
-impl Mode {
-    fn parse(args: ArgsOs) -> anyhow::Result<Self> {
+impl Args {
+    fn parse(args: ArgsOs) -> anyhow::Result<Option<Self>> {
         let mut iter = args.into_iter();
         let mut main_args = vec![];
         while let Some(arg) = iter.next() {
@@ -134,33 +136,21 @@ impl Mode {
             main_args.push(arg)
         }
         let mut pico_args = pico_args::Arguments::from_vec(main_args);
-        if pico_args.contains(["-h", "--help"]) {
-            Ok(Self::Help)
-        } else {
-            let command = iter.next().ok_or(anyhow!("command is not specified"))?;
-            let command_args = iter.collect();
-            Ok(Self::Run(Args {
-                command,
-                command_args,
-                field_delimiter: pico_args
-                    .opt_value_from_str(["-d", "--field-delimiter"])?
-                    .unwrap_or('\t'),
-                field_index: pico_args.opt_value_from_str(["-f", "--field-index"])?,
-                field_partitions: pico_args.opt_value_from_str(["-p", "--field-partitions"])?,
-                limit_items: pico_args.opt_value_from_str(["-l", "--limit-items"])?,
-            }))
-        }
+        let Some(command) = iter.next() else {
+            return Ok(None);
+        };
+        let command_args = iter.collect();
+        Ok(Some(Args {
+            command,
+            command_args,
+            field_delimiter: pico_args
+                .opt_value_from_str(["-d", "--field-delimiter"])?
+                .unwrap_or('\t'),
+            field_index: pico_args.opt_value_from_str(["-f", "--field-index"])?,
+            field_partitions: pico_args.opt_value_from_str(["-p", "--field-partitions"])?,
+            limit_items: pico_args.opt_value_from_str(["-l", "--limit-items"])?,
+        }))
     }
-}
-
-#[derive(Debug)]
-struct Args {
-    command: OsString,
-    command_args: Vec<OsString>,
-    field_delimiter: char,
-    field_index: Option<usize>,
-    field_partitions: Option<usize>,
-    limit_items: Option<usize>,
 }
 
 fn extract_field(
