@@ -2,7 +2,10 @@ use std::cmp::Reverse;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
 use std::io::{self, Write as _};
+use std::mem;
 use std::process::{Command, ExitCode};
+use std::sync::mpsc;
+use std::thread;
 
 use fzf_filter::fzf;
 
@@ -44,17 +47,24 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
     }
 
     let stdin = io::stdin();
-    let slab = fzf::Slab::default();
+    let (tx, rx) = mpsc::channel::<String>();
+
+    thread::spawn(move || {
+        let mut buffer = String::new();
+        while let Ok(num_bytes) = stdin.read_line(&mut buffer) {
+            if num_bytes == 0 {
+                break;
+            }
+            tx.send(mem::take(&mut buffer)).unwrap();
+        }
+    });
 
     let output_content = String::from_utf8_lossy(&output.stdout);
-    let mut buffer = String::new();
+    let slab = fzf::Slab::default();
 
-    while let Ok(num_bytes) = stdin.read_line(&mut buffer) {
-        if num_bytes == 0 {
-            break;
-        }
-        let Some((sequence, pattern)) = buffer.trim_end_matches('\n').split_once(' ') else {
-            buffer.clear();
+    while let Ok(line) = rx.recv() {
+        let line = rx.try_iter().last().unwrap_or(line);
+        let Some((sequence, pattern)) = line.trim_end_matches('\n').split_once(' ') else {
             continue;
         };
         if pattern.is_empty() {
@@ -109,7 +119,6 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
             }
         }
         println!("{}", sequence); // EOF
-        buffer.clear();
     }
 
     return Ok(ExitCode::SUCCESS);
