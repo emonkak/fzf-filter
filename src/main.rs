@@ -89,7 +89,7 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
                         if let Some(content) = extract_field(line, delimiter, index, partitions) {
                             let score = fzf::get_score(content, &pattern, &slab);
                             if score > 0 {
-                                matched_lines.push(Reverse((score, line)));
+                                matched_lines.push((Reverse(score), line));
                             }
                         }
                     }
@@ -98,7 +98,7 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
                     for line in output_content.lines() {
                         let score = fzf::get_score(line, &pattern, &slab);
                         if score > 0 {
-                            matched_lines.push(Reverse((score, line)));
+                            matched_lines.push((Reverse(score), line));
                         }
                     }
                 }
@@ -114,7 +114,7 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
 
             matched_lines.sort_unstable();
 
-            for Reverse((_, line)) in matched_lines {
+            for (_, line) in matched_lines {
                 println!("{} {}", sequence, line);
             }
         }
