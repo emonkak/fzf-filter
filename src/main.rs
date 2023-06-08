@@ -14,8 +14,8 @@ USAGE:
   fzf-filter [OPTIONS] -- <COMMAND> [COMMAND_ARGUMENTS]
 
 OPTIONS:
-  -l, --limit-items NUM       a maximum number of items to print
-  -f, --field-index INDEX     a field index to be matched
+  -l, --limit-items NUM       a maximum number of items to output
+  -f, --field-index NUM       a field index to be matched
                               (default: whole line)
   -p, --field-partitions NUM  a maximum number of partitions of the field
   -d, --field-delimiter CHAR  a field delimiter character
