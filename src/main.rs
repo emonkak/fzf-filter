@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::env::{self, ArgsOs};
 use std::ffi::OsString;
@@ -46,10 +47,38 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::FAILURE);
     }
 
-    let stdin = io::stdin();
+    let output_content = String::from_utf8_lossy(&output.stdout);
+
+    match (args.field_index, args.field_partitions) {
+        (Some(index), Some(partitions)) => {
+            let extractor = PartitionExtractor {
+                index,
+                partitions,
+                delimiter: args.field_delimiter,
+            };
+            run_loop(output_content, args.limit_items, extractor);
+        }
+        (Some(index), None) => {
+            let extractor = IndexExtractor {
+                index,
+                delimiter: args.field_delimiter,
+            };
+            run_loop(output_content, args.limit_items, extractor);
+        }
+        _ => {
+            let extractor = ThroughExtractor;
+            run_loop(output_content, args.limit_items, extractor);
+        }
+    }
+
+    return Ok(ExitCode::SUCCESS);
+}
+
+fn run_loop(output_content: Cow<str>, limit_items: Option<usize>, extractor: impl Extractor) {
     let (tx, rx) = mpsc::channel::<String>();
 
     thread::spawn(move || {
+        let stdin = io::stdin();
         let mut buffer = String::new();
         while let Ok(num_bytes) = stdin.read_line(&mut buffer) {
             if num_bytes == 0 {
@@ -59,7 +88,6 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
         }
     });
 
-    let output_content = String::from_utf8_lossy(&output.stdout);
     let slab = fzf::Slab::default();
 
     while let Ok(line) = rx.recv() {
@@ -68,7 +96,7 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
             continue;
         };
         if pattern.is_empty() {
-            if let Some(limit_items) = args.limit_items {
+            if let Some(limit_items) = limit_items {
                 for line in output_content.lines().take(limit_items) {
                     println!("{} {}", sequence, line)
                 }
@@ -81,30 +109,16 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
             let pattern = fzf::Pattern::new(pattern, fzf::CaseMode::Smart, true);
             let mut matched_lines = vec![];
 
-            match args.field_index {
-                Some(index) => {
-                    let delimiter = args.field_delimiter;
-                    let partitions = args.field_partitions;
-                    for line in output_content.lines() {
-                        if let Some(content) = extract_field(line, delimiter, index, partitions) {
-                            let score = fzf::get_score(content, &pattern, &slab);
-                            if score > 0 {
-                                matched_lines.push((Reverse(score), line));
-                            }
-                        }
-                    }
-                }
-                None => {
-                    for line in output_content.lines() {
-                        let score = fzf::get_score(line, &pattern, &slab);
-                        if score > 0 {
-                            matched_lines.push((Reverse(score), line));
-                        }
+            for line in output_content.lines() {
+                if let Some(content) = extractor.extract(line) {
+                    let score = fzf::get_score(content, &pattern, &slab);
+                    if score > 0 {
+                        matched_lines.push((Reverse(score), line));
                     }
                 }
             }
 
-            let matched_lines = match args.limit_items {
+            let matched_lines = match limit_items {
                 Some(limit_items) if matched_lines.len() > limit_items => {
                     let (partial_lines, _, _) = matched_lines.select_nth_unstable(limit_items);
                     partial_lines
@@ -118,10 +132,9 @@ fn run(args: Args) -> anyhow::Result<ExitCode> {
                 println!("{} {}", sequence, line);
             }
         }
+
         println!("{}", sequence); // EOF
     }
-
-    return Ok(ExitCode::SUCCESS);
 }
 
 #[derive(Debug)]
@@ -162,14 +175,37 @@ impl Args {
     }
 }
 
-fn extract_field(
-    s: &str,
-    delimiter: char,
+trait Extractor {
+    fn extract<'a>(&self, s: &'a str) -> Option<&'a str>;
+}
+
+struct PartitionExtractor {
     index: usize,
-    partitions: Option<usize>,
-) -> Option<&str> {
-    match partitions {
-        Some(n) => s.splitn(n, delimiter).nth(index),
-        None => s.split(delimiter).nth(index),
+    partitions: usize,
+    delimiter: char,
+}
+
+impl Extractor for PartitionExtractor {
+    fn extract<'a>(&self, s: &'a str) -> Option<&'a str> {
+        s.splitn(self.partitions, self.delimiter).nth(self.index)
+    }
+}
+
+struct IndexExtractor {
+    index: usize,
+    delimiter: char,
+}
+
+impl Extractor for IndexExtractor {
+    fn extract<'a>(&self, s: &'a str) -> Option<&'a str> {
+        s.split(self.delimiter).nth(self.index)
+    }
+}
+
+struct ThroughExtractor;
+
+impl Extractor for ThroughExtractor {
+    fn extract<'a>(&self, s: &'a str) -> Option<&'a str> {
+        return Some(s);
     }
 }
