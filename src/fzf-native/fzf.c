@@ -84,8 +84,8 @@ static size_t leading_whitespaces(fzf_string_t *str) {
 
 static size_t trailing_whitespaces(fzf_string_t *str) {
   size_t whitespaces = 0;
-  for (int32_t i = (int32_t)str->size - 1; i >= 0; i--) {
-    if (!isspace((uint8_t)str->data[i])) {
+  for (size_t i = 0; i < str->size; i++) {
+    if (!isspace((uint8_t)str->data[str->size - i - 1])) {
       break;
     }
     whitespaces++;
@@ -488,7 +488,7 @@ fzf_result_t fzf_fuzzy_match_v1(bool case_sensitive, bool normalize,
         sidx = (int32_t)idx;
       }
       pidx++;
-      if (pidx == (int32_t)M) {
+      if ((size_t)pidx == M) {
         eidx = (int32_t)idx + 1;
         break;
       }
@@ -733,10 +733,10 @@ fzf_result_t fzf_fuzzy_match_v2(bool case_sensitive, bool normalize,
 
       int16_t s1 = 0;
       int16_t s2 = 0;
-      if (i > 0 && (int32_t)j >= f.data[i]) {
+      if (i > 0 && j >= (size_t)f.data[i]) {
         s1 = h.data[ii - width + j0 - 1];
       }
-      if ((int32_t)j > f.data[i]) {
+      if (j > (size_t)f.data[i]) {
         s2 = h.data[ii + j0 - 1];
       }
 
